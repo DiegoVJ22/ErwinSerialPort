@@ -83,35 +83,6 @@ namespace winproySerialPort
             Invoke(delegadoMostrarArchivo, ruta);
         }
 
-        private void MostrandoArchivo(string rutaArchivo)
-        {
-            // Crear un PictureBox para mostrar la imagen
-            PictureBox pictureBox = new PictureBox
-            {
-                Image = Image.FromFile(rutaArchivo),
-                Size = new Size(170, 170), // Redimensionar a 170x170
-                SizeMode = PictureBoxSizeMode.Zoom, // Ajustar la imagen al tamaño manteniendo la relación de aspecto
-                BackColor = Color.Transparent,
-                BorderStyle = BorderStyle.FixedSingle, // Borde sencillo
-            };
-
-            // Configurar el margen para el borde verde
-            pictureBox.Padding = new Padding(2);
-            pictureBox.BackColor = Color.LightGray; // Borde gris claro
-
-            int yOffset = chatContainer.Controls.Count > 0
-                ? chatContainer.Controls[chatContainer.Controls.Count - 1].Bottom + 5
-                : 10;
-
-            pictureBox.Location = new Point(10, yOffset);
-            pictureBox.Click += (s, args) => Process.Start(new ProcessStartInfo(rutaArchivo) { UseShellExecute = true });
-            // Agregar el PictureBox al contenedor
-            chatContainer.Controls.Add(pictureBox);
-            chatContainer.ScrollControlIntoView(pictureBox);
-
-
-        }
-
         private void MostrandoMensaje(string mensajeRecibido)
         {
             Label messageLabel = new Label
@@ -134,12 +105,95 @@ namespace winproySerialPort
             chatContainer.ScrollControlIntoView(messageLabel);
         }
 
+        private void MostrandoArchivo(string rutaArchivo)
+        {
+            // Verificar si el archivo es una imagen por su extensión
+            string[] extensionesImagen = { ".jpg", ".jpeg", ".png", ".gif", ".bmp" };
+            string extension = Path.GetExtension(rutaArchivo).ToLower();
+
+            if (extensionesImagen.Contains(extension))
+            {
+                // Mostrar la imagen como PictureBox si es un archivo de imagen
+                PictureBox pictureBox = new PictureBox
+                {
+                    Image = Image.FromFile(rutaArchivo),
+                    Size = new Size(170, 170), // Redimensionar a 170x170
+                    SizeMode = PictureBoxSizeMode.Zoom,
+                    BackColor = Color.Transparent,
+                    BorderStyle = BorderStyle.FixedSingle,
+                };
+
+                pictureBox.Padding = new Padding(2);
+                pictureBox.BackColor = Color.LightGray;
+
+                int yOffset = chatContainer.Controls.Count > 0
+                    ? chatContainer.Controls[chatContainer.Controls.Count - 1].Bottom + 5
+                    : 10;
+
+                pictureBox.Location = new Point(10, yOffset);
+                pictureBox.Click += (s, args) => Process.Start(new ProcessStartInfo(rutaArchivo) { UseShellExecute = true });
+
+                chatContainer.Controls.Add(pictureBox);
+                chatContainer.ScrollControlIntoView(pictureBox);
+            }
+            else
+            {
+                // Crear un panel para otros tipos de archivo
+                Panel panelArchivo = new Panel
+                {
+                    Size = new Size(300, 50),
+                    BackColor = Color.LightGray,
+                    BorderStyle = BorderStyle.FixedSingle,
+                };
+
+                // Ícono para el archivo (puedes cambiar la ruta al ícono genérico)
+                PictureBox iconoArchivo = new PictureBox
+                {
+                    Image = Image.FromFile("D:\\PRUEBA\\ErwinSerialPort\\img\\descarga.png"), // Asegúrate de tener un ícono predeterminado
+                    Size = new Size(40, 40),
+                    SizeMode = PictureBoxSizeMode.Zoom,
+                    Location = new Point(5, 5),
+                };
+
+                // Nombre del archivo
+                Label labelNombreArchivo = new Label
+                {
+                    Text = Path.GetFileName(rutaArchivo),
+                    AutoSize = false,
+                    Size = new Size(240, 40),
+                    Location = new Point(50, 5),
+                    TextAlign = ContentAlignment.MiddleLeft,
+                };
+
+                // Evento para abrir el archivo al hacer clic
+                panelArchivo.Click += (s, args) => Process.Start(new ProcessStartInfo(rutaArchivo) { UseShellExecute = true });
+                iconoArchivo.Click += (s, args) => Process.Start(new ProcessStartInfo(rutaArchivo) { UseShellExecute = true });
+                labelNombreArchivo.Click += (s, args) => Process.Start(new ProcessStartInfo(rutaArchivo) { UseShellExecute = true });
+
+                // Agregar controles al panel
+                panelArchivo.Controls.Add(iconoArchivo);
+                panelArchivo.Controls.Add(labelNombreArchivo);
+
+                int yOffset = chatContainer.Controls.Count > 0
+                    ? chatContainer.Controls[chatContainer.Controls.Count - 1].Bottom + 5
+                    : 10;
+
+                panelArchivo.Location = new Point(10, yOffset);
+
+                chatContainer.Controls.Add(panelArchivo);
+                chatContainer.ScrollControlIntoView(panelArchivo);
+            }
+        }
+
         private void BtnEnviarArchivo_Click(object sender, EventArgs e)
         {
-            OpenFileDialog openFileDialog = new OpenFileDialog();
-            openFileDialog.Title = "Selecciona un archivo";
-            openFileDialog.Filter = "Todos los archivos (*.*)|*.*";
-            openFileDialog.Multiselect = false;
+            OpenFileDialog openFileDialog = new OpenFileDialog
+            {
+                Title = "Selecciona un archivo",
+                Filter = "Todos los archivos (*.*)|*.*",
+                Multiselect = false
+            };
+
             if (openFileDialog.ShowDialog() == DialogResult.OK)
             {
                 // Obtener la ruta del archivo seleccionado
@@ -147,35 +201,91 @@ namespace winproySerialPort
                 rutasArchivos.Add(rutaArchivo);
                 objTxRx.IniciaEnvioArchivo(rutaArchivo);
 
-                // Crear un PictureBox para mostrar la imagen
-                PictureBox pictureBox = new PictureBox
+                // Verificar si el archivo es una imagen por su extensión
+                string[] extensionesImagen = { ".jpg", ".jpeg", ".png", ".gif", ".bmp" };
+                string extension = Path.GetExtension(rutaArchivo).ToLower();
+
+                if (extensionesImagen.Contains(extension))
                 {
-                    Image = Image.FromFile(rutaArchivo),
-                    Size = new Size(170, 170), // Redimensionar a 170x170
-                    SizeMode = PictureBoxSizeMode.Zoom, // Ajustar la imagen al tamaño manteniendo la relación de aspecto
-                    BackColor = Color.Transparent,
-                    BorderStyle = BorderStyle.FixedSingle, // Borde sencillo
-                };
+                    // Mostrar la imagen como PictureBox si es un archivo de imagen
+                    PictureBox pictureBox = new PictureBox
+                    {
+                        Image = Image.FromFile(rutaArchivo),
+                        Size = new Size(170, 170), // Redimensionar a 170x170
+                        SizeMode = PictureBoxSizeMode.Zoom,
+                        BackColor = Color.Transparent,
+                        BorderStyle = BorderStyle.FixedSingle, // Borde sencillo
+                    };
 
-                // Configurar el margen para el borde verde
-                pictureBox.Padding = new Padding(2);
-                pictureBox.BackColor = Color.LightGreen; // Borde verde
+                    pictureBox.Padding = new Padding(2);
+                    pictureBox.BackColor = Color.LightGreen; // Borde verde
 
-                // Calcular la posición del PictureBox en el contenedor
-                int yOffset = chatContainer.Controls.Count > 0
-                    ? chatContainer.Controls[chatContainer.Controls.Count - 1].Bottom + 5
-                    : 10;
+                    // Calcular la posición en el contenedor
+                    int yOffset = chatContainer.Controls.Count > 0
+                        ? chatContainer.Controls[chatContainer.Controls.Count - 1].Bottom + 5
+                        : 10;
 
-                int xOffset = chatContainer.DisplayRectangle.Width - pictureBox.Width - 20;
+                    int xOffset = chatContainer.DisplayRectangle.Width - pictureBox.Width - 20;
 
-                pictureBox.Location = new Point(xOffset, yOffset);
-                pictureBox.Click += (s, args) => Process.Start(new ProcessStartInfo(rutaArchivo) { UseShellExecute = true });
-                // Agregar el PictureBox al contenedor
-                chatContainer.Controls.Add(pictureBox);
-                chatContainer.ScrollControlIntoView(pictureBox);
-                //MessageBox.Show("Archivo seleccionado: " + rutaArchivo + "\nTamaño:" + bytesArchivo);
+                    pictureBox.Location = new Point(xOffset, yOffset);
+                    pictureBox.Click += (s, args) => Process.Start(new ProcessStartInfo(rutaArchivo) { UseShellExecute = true });
+
+                    chatContainer.Controls.Add(pictureBox);
+                    chatContainer.ScrollControlIntoView(pictureBox);
+                }
+                else
+                {
+                    // Crear un panel para otros tipos de archivo
+                    Panel panelArchivo = new Panel
+                    {
+                        Size = new Size(300, 50),
+                        BackColor = Color.LightGreen,
+                        BorderStyle = BorderStyle.FixedSingle, // Borde sencillo
+                    };
+
+                    // Ícono para el archivo (puedes cambiar la ruta al ícono genérico)
+                    PictureBox iconoArchivo = new PictureBox
+                    {
+                        Image = Image.FromFile("D:\\PRUEBA\\ErwinSerialPort\\img\\descarga.png"), // Asegúrate de tener un ícono predeterminado
+                        Size = new Size(40, 40),
+                        SizeMode = PictureBoxSizeMode.Zoom,
+                        Location = new Point(5, 5),
+                    };
+
+                    // Nombre del archivo
+                    Label labelNombreArchivo = new Label
+                    {
+                        Text = Path.GetFileName(rutaArchivo),
+                        AutoSize = false,
+                        Size = new Size(240, 40),
+                        Location = new Point(50, 5),
+                        TextAlign = ContentAlignment.MiddleLeft,
+                    };
+
+                    // Evento para abrir el archivo al hacer clic
+                    panelArchivo.Click += (s, args) => Process.Start(new ProcessStartInfo(rutaArchivo) { UseShellExecute = true });
+                    iconoArchivo.Click += (s, args) => Process.Start(new ProcessStartInfo(rutaArchivo) { UseShellExecute = true });
+                    labelNombreArchivo.Click += (s, args) => Process.Start(new ProcessStartInfo(rutaArchivo) { UseShellExecute = true });
+
+                    // Agregar controles al panel
+                    panelArchivo.Controls.Add(iconoArchivo);
+                    panelArchivo.Controls.Add(labelNombreArchivo);
+
+                    // Calcular la posición en el contenedor
+                    int yOffset = chatContainer.Controls.Count > 0
+                        ? chatContainer.Controls[chatContainer.Controls.Count - 1].Bottom + 5
+                        : 10;
+
+                    int xOffset = chatContainer.DisplayRectangle.Width - panelArchivo.Width - 20;
+
+                    panelArchivo.Location = new Point(xOffset, yOffset);
+
+                    chatContainer.Controls.Add(panelArchivo);
+                    chatContainer.ScrollControlIntoView(panelArchivo);
+                }
             }
         }
+
 
         //Métodos de prueba
 

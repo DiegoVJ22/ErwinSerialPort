@@ -42,7 +42,7 @@ namespace winproySerialPort
         private string mensRecibido;
         private string rutaArchivoRecibido;
 
-        private string rutaDescarga = "G:\\PRUEBA\\2\\";
+        private string rutaDescarga = "D:\\PRUEBA\\1\\";
 
         private Boolean BufferSalidaVacio;
 
@@ -129,6 +129,7 @@ namespace winproySerialPort
         private void RecibiendoMensaje()
         {
             string CabRec = ASCIIEncoding.UTF8.GetString(TramaRecibida, 1, 4);
+            MessageBox.Show(CabRec);
             int LongMensRec = Convert.ToInt16(CabRec);
 
             mensRecibido = ASCIIEncoding.UTF8.GetString(TramaRecibida, 5, LongMensRec);
