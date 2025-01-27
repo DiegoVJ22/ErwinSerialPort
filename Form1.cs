@@ -25,22 +25,23 @@ namespace winproySerialPort
         private void btnEnviar_Click(object sender, EventArgs e)
         {
             objTxRx.Enviar(rchMensajes.Text.Trim());
-            rchMensajes.Text = ""; 
-           
+            rchMensajes.Text = "";
         }
 
         private void Form1_Load(object sender, EventArgs e)
         {
             objTxRx = new classTransRecep();
             objTxRx.Inicializa("COM2");
-            objTxRx.LlegoMensaje += new classTransRecep.HandlerTxRx(objTxRx_LlegoMensaje);
-            delegadoMostrar = new MostrarOtroProceso(MostrandoMensaje); 
+            objTxRx.LlegoMensaje += objTxRx_LlegoMensaje;
         }
 
 
         private void objTxRx_LlegoMensaje(object o, string mm)
         {
-            Invoke(delegadoMostrar , mm);
+            Invoke(new Action(() =>
+            {
+                rchConversacion.AppendText("\n" + mm);
+            }));
         }
 
         private void MostrandoMensaje(string textMens)
@@ -50,18 +51,16 @@ namespace winproySerialPort
 
         private void BtnEnviarArchivo_Click(object sender, EventArgs e)
         {
-            OpenFileDialog openFileDialog = new OpenFileDialog();
-            openFileDialog.Title = "Selecciona un archivo";
-            openFileDialog.Filter = "Todos los archivos (*.*)|*.*";
-            openFileDialog.Multiselect = false;
-            if (openFileDialog.ShowDialog() == DialogResult.OK)
+            using (OpenFileDialog openFileDialog = new OpenFileDialog())
             {
-                // Obtener la ruta del archivo seleccionado
-                string rutaArchivo = openFileDialog.FileName;
-
-                objTxRx.IniciaEnvioArchivo(rutaArchivo);
-
-                //MessageBox.Show("Archivo seleccionado: " + rutaArchivo + "\nTamaño:" + bytesArchivo);
+                openFileDialog.Title = "Selecciona un archivo";
+                openFileDialog.Filter = "Todos los archivos (*.*)|*.*";
+                openFileDialog.Multiselect = false;
+                if (openFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    string rutaArchivo = openFileDialog.FileName;
+                    objTxRx.IniciaEnvioArchivo(rutaArchivo);
+                }
             }
         }
 
