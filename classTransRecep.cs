@@ -35,14 +35,14 @@ namespace winproySerialPort
         Thread procesoEnvioArchivo;
         Thread procesoConstruyeArchivo;
 
-        
+        private Object lockPuerto = new object();
 
         private SerialPort puerto;
         private string mensajeEnviar;
         private string mensRecibido;
         private string rutaArchivoRecibido;
 
-        private string rutaDescarga = "E:\\PRUEBA\\2\\";
+        private string rutaDescarga = "G:\\PRUEBA\\2\\";
 
         private Boolean BufferSalidaVacio;
 
@@ -60,8 +60,8 @@ namespace winproySerialPort
 
             TramaRecibida = new byte[1024];
 
-            for(int i=0;i <= 1023;i++)
-                { tramaRelleno[i] = 64; }
+            for (int i = 0; i <= 1023; i++)
+            { tramaRelleno[i] = 64; }
 
         }
 
@@ -111,6 +111,7 @@ namespace winproySerialPort
                         string CabeceraRecibida = Encoding.UTF8.GetString(TramaRecibida, 1, 4);
                         int LongitudMensajeRecibido = Convert.ToInt16(CabeceraRecibida);
                         string metadatosRecibidos = Encoding.UTF8.GetString(TramaRecibida, 5, LongitudMensajeRecibido);
+                        //MessageBox.Show(metadatosRecibidos);
                         InicioConstruirArchivo(metadatosRecibidos);
                         break;
                     case "A":
@@ -171,21 +172,24 @@ namespace winproySerialPort
 
         private void Enviando()
         {
-            puerto.Write(TramCabaceraEnvio, 0, 5);
-            puerto.Write(TramaEnvio, 0, TramaEnvio.Length);
-            puerto.Write(tramaRelleno, 0, 1019 - TramaEnvio.Length);
+            lock (lockPuerto)
+            {
+                puerto.Write(TramCabaceraEnvio, 0, 5);
+                puerto.Write(TramaEnvio, 0, TramaEnvio.Length);
+                puerto.Write(tramaRelleno, 0, 1019 - TramaEnvio.Length);
+            }
         }
 
         private void VerificandoSalida()
         {
-            while(true)
+            while (true)
             {
                 if (puerto.BytesToWrite > 0)
                     BufferSalidaVacio = false;
                 else
                     BufferSalidaVacio = true;
             }
-         
+
         }
 
         public void IniciaEnvioArchivo(string nombre)
@@ -204,7 +208,7 @@ namespace winproySerialPort
             int indiceUltimaBarra = nombre.LastIndexOf('\\');
             string nombreArchivo = nombre.Substring(indiceUltimaBarra + 1);
 
-            string metadatos = nombreArchivo +"-"+ FlujoArchivoEnviar.Length;
+            string metadatos = nombreArchivo + "-" + FlujoArchivoEnviar.Length;
             //MessageBox.Show(metadatos);
             Enviar(metadatos, "D");
             procesoEnvioArchivo = new Thread(EnviandoArchivo);
@@ -216,7 +220,7 @@ namespace winproySerialPort
         {
             byte[] TramaEnvioArchivo;
             byte[] TramCabaceraEnvioArchivo;
-            
+
             TramaEnvioArchivo = new byte[1019];
             TramCabaceraEnvioArchivo = new byte[5];
 
@@ -230,25 +234,44 @@ namespace winproySerialPort
                 LeyendoArchivo.Read(TramaEnvioArchivo, 0, 1019);
                 arhivoEnviar.Avance = arhivoEnviar.Avance + 1019;
                 //envio de una trama llena de 1019 bytes del archivo
-                while(BufferSalidaVacio==false)
+                while (BufferSalidaVacio == false)
                 {//esperamos
                 }
-                //MessageBox.Show("avance = " + arhivoEnviar.Avance.ToString());
-                puerto.Write(TramCabaceraEnvioArchivo, 0, 5);
-                puerto.Write(TramaEnvioArchivo, 0, 1019);
-               // puerto.Write(tramaRelleno, 0, 1019 - TramaEnvio.Length);
+                lock (lockPuerto)
+                {
+                    //MessageBox.Show("avance = " + arhivoEnviar.Avance.ToString());
+                    puerto.Write(TramCabaceraEnvioArchivo, 0, 5);
+                    puerto.Write(TramaEnvioArchivo, 0, 1019);
+                    // puerto.Write(tramaRelleno, 0, 1019 - TramaEnvio.Length);
+                }
+
+                //Console.WriteLine("Escribiendo archivo...");
+                Console.WriteLine("Escribiendo archivo..." + "Avance: " + Math.Round(((double)arhivoEnviar.Avance / arhivoEnviar.Tamaño) * 100) + "%.");
+                Console.WriteLine("Avance: " + arhivoEnviar.Avance);
+                Console.WriteLine("Tamaño: " + arhivoEnviar.Tamaño);
+
             }
             int tamanito = Convert.ToInt16(arhivoEnviar.Tamaño - arhivoEnviar.Avance);
             LeyendoArchivo.Read(TramaEnvioArchivo, 0, tamanito);
+            arhivoEnviar.Avance = arhivoEnviar.Avance + tamanito;
             //envio de la ultima trama + relleno
-             while (BufferSalidaVacio == false)
-             {//esperamos
-             }
-            MessageBox.Show("avance = " + arhivoEnviar.Avance.ToString() + " t= " + tamanito.ToString());
-            puerto.Write(TramCabaceraEnvioArchivo, 0, 5);
-            puerto.Write(TramaEnvioArchivo, 0, tamanito );
-            puerto.Write(tramaRelleno, 0, 1019 - tamanito);
+            while (BufferSalidaVacio == false)
+            {//esperamos
+            }
+            //MessageBox.Show("avance = " + arhivoEnviar.Avance.ToString() + " t= " + tamanito.ToString());
+            lock (lockPuerto)
+            {
+                puerto.Write(TramCabaceraEnvioArchivo, 0, 5);
+                puerto.Write(TramaEnvioArchivo, 0, tamanito);
+                puerto.Write(tramaRelleno, 0, 1019 - tamanito);
+                //Console.WriteLine("Escribiendo archivo..." + "Avance: " + (arhivoEnviar.Avance / arhivoEnviar.Tamaño) * 100 + "%.");
 
+                //Console.WriteLine("Escribiendo archivo..." + "Avance: " + (arhivoEnviar.Avance / arhivoEnviar.Tamaño) * 100 + "%.");
+                //Console.WriteLine("Avance: " + arhivoEnviar.Avance);
+                //Console.WriteLine("Tamaño: " + arhivoEnviar.Tamaño);
+                Console.WriteLine("Final: " + Math.Round(((double)arhivoEnviar.Avance / arhivoEnviar.Tamaño) * 100) + "%.");
+                Console.WriteLine("Archivo escrito totalmente.");
+            }
             LeyendoArchivo.Close();
             FlujoArchivoEnviar.Close();
         }
@@ -260,34 +283,40 @@ namespace winproySerialPort
             string[] partes = metadatos.Split('-');
             string nombre = partes[0];
             string bytes = partes[1];
-            rutaArchivoRecibido = rutaDescarga+nombre;
-            FlujoArchivoRecibir = new FileStream(rutaDescarga+nombre, FileMode.Create, FileAccess.Write);
+            rutaArchivoRecibido = rutaDescarga + nombre;
+            FlujoArchivoRecibir = new FileStream(rutaDescarga + nombre, FileMode.Create, FileAccess.Write);
             EscribiendoArchivo = new BinaryWriter(FlujoArchivoRecibir);
             arhivoRecibir.Nombre = nombre;
             arhivoRecibir.Num = 1;
             arhivoRecibir.Tamaño = long.Parse(bytes);
-            arhivoRecibir.Avance =0;
+            arhivoRecibir.Avance = 0;
         }
 
         private void ConstruirArchivo()
         {
             // debe realizarse en funcion del tamaño 1019 y la ultima será tamanito
-           
-            if(arhivoRecibir.Avance<= arhivoRecibir.Tamaño - 1019)
-            { 
-                EscribiendoArchivo.Write(TramaRecibida,5,1019);
+
+            if (arhivoRecibir.Avance <= arhivoRecibir.Tamaño - 1019)
+            {
+                EscribiendoArchivo.Write(TramaRecibida, 5, 1019);
                 arhivoRecibir.Avance = arhivoRecibir.Avance + 1019;
+                Console.WriteLine("Escribiendo archivo..." + "Avance: " + Math.Round(((double)arhivoRecibir.Avance / arhivoRecibir.Tamaño) * 100) + "%.");
+                //Console.WriteLine("Escribiendo archivo...");
+                //Console.WriteLine("Avance: " + arhivoRecibir.Avance);
             }
-             
-             else
-             {
+
+            else
+            {
                 int tamanito = Convert.ToInt16(arhivoRecibir.Tamaño - arhivoRecibir.Avance);
-                EscribiendoArchivo.Write(TramaRecibida,5,tamanito);
+                EscribiendoArchivo.Write(TramaRecibida, 5, tamanito);
+                Console.WriteLine("Final: " + Math.Round(((double)arhivoRecibir.Avance / arhivoRecibir.Tamaño) * 100) + "%.");
+                Console.WriteLine("Archivo recibido.");
+                //Console.WriteLine("Avance: " + arhivoRecibir.Avance);
                 EscribiendoArchivo.Close();
                 FlujoArchivoRecibir.Close();
                 OnLlegoArchivo();
             }
-           
+
         }
 
     }
