@@ -22,25 +22,26 @@ namespace winproySerialPort
             InitializeComponent();
         }
 
-        private void btnEnviar_Click(object sender, EventArgs e)
-        {
-            objTxRx.Enviar(rchMensajes.Text.Trim());
-            rchMensajes.Text = ""; 
-           
-        }
-
         private void Form1_Load(object sender, EventArgs e)
         {
             objTxRx = new classTransRecep();
             objTxRx.Inicializa("COM2");
             objTxRx.LlegoMensaje += new classTransRecep.HandlerTxRx(objTxRx_LlegoMensaje);
-            delegadoMostrar = new MostrarOtroProceso(MostrandoMensaje); 
         }
-
 
         private void objTxRx_LlegoMensaje(object o, string mm)
         {
-            Invoke(delegadoMostrar , mm);
+            // Usamos Invoke para actualizar UI desde el hilo de recepción
+            Invoke(new Action(() =>
+            {
+                rchConversacion.Text += "\n" + mm;
+            }));
+        }
+
+        private void btnEnviar_Click(object sender, EventArgs e)
+        {
+            objTxRx.Enviar(rchMensajes.Text.Trim());
+            rchMensajes.Text = "";
         }
 
         private void MostrandoMensaje(string textMens)
@@ -56,12 +57,8 @@ namespace winproySerialPort
             openFileDialog.Multiselect = false;
             if (openFileDialog.ShowDialog() == DialogResult.OK)
             {
-                // Obtener la ruta del archivo seleccionado
                 string rutaArchivo = openFileDialog.FileName;
-
                 objTxRx.IniciaEnvioArchivo(rutaArchivo);
-
-                //MessageBox.Show("Archivo seleccionado: " + rutaArchivo + "\nTamaño:" + bytesArchivo);
             }
         }
 
