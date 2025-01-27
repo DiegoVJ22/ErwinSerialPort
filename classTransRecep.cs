@@ -15,6 +15,8 @@ namespace winproySerialPort
     {
         public delegate void HandlerTxRx(object oo, string mensRec);
         public event HandlerTxRx LlegoMensaje;
+        public delegate void HandlerTxRxArchivo(object oo, string mensRec);
+        public event HandlerTxRxArchivo LlegoArchivo;
 
         private ClassArchivoEnviando arhivoEnviar;
         private FileStream FlujoArchivoEnviar;
@@ -38,8 +40,9 @@ namespace winproySerialPort
         private SerialPort puerto;
         private string mensajeEnviar;
         private string mensRecibido;
+        private string rutaArchivoRecibido;
 
-        private string rutaDescarga = "E:\\PRUEBA\\1\\";
+        private string rutaDescarga = "E:\\PRUEBA\\2\\";
 
         private Boolean BufferSalidaVacio;
 
@@ -139,6 +142,11 @@ namespace winproySerialPort
                 LlegoMensaje(this, mensRecibido);
         }
 
+        protected virtual void OnLlegoArchivo()
+        {
+            if (LlegoArchivo != null)
+                LlegoArchivo(this, rutaArchivoRecibido);
+        }
 
         public void Enviar(string mensaje, string tipo = "M")
         {
@@ -252,6 +260,7 @@ namespace winproySerialPort
             string[] partes = metadatos.Split('-');
             string nombre = partes[0];
             string bytes = partes[1];
+            rutaArchivoRecibido = rutaDescarga+nombre;
             FlujoArchivoRecibir = new FileStream(rutaDescarga+nombre, FileMode.Create, FileAccess.Write);
             EscribiendoArchivo = new BinaryWriter(FlujoArchivoRecibir);
             arhivoRecibir.Nombre = nombre;
@@ -276,6 +285,7 @@ namespace winproySerialPort
                 EscribiendoArchivo.Write(TramaRecibida,5,tamanito);
                 EscribiendoArchivo.Close();
                 FlujoArchivoRecibir.Close();
+                OnLlegoArchivo();
             }
            
         }

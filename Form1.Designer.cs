@@ -31,7 +31,6 @@
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             this.btnEnviar = new System.Windows.Forms.Button();
             this.BtnEnviarArchivo = new System.Windows.Forms.Button();
-            this.button1 = new System.Windows.Forms.Button();
             this.btnCfg = new System.Windows.Forms.Button();
             this.chatContainer = new System.Windows.Forms.Panel();
             this.txtMensaje = new System.Windows.Forms.TextBox();
@@ -57,16 +56,6 @@
             this.BtnEnviarArchivo.TabIndex = 4;
             this.BtnEnviarArchivo.UseVisualStyleBackColor = true;
             this.BtnEnviarArchivo.Click += new System.EventHandler(this.BtnEnviarArchivo_Click);
-            // 
-            // button1
-            // 
-            this.button1.Location = new System.Drawing.Point(320, 497);
-            this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(75, 23);
-            this.button1.TabIndex = 5;
-            this.button1.Text = "button1";
-            this.button1.UseVisualStyleBackColor = true;
-            this.button1.Click += new System.EventHandler(this.button1_Click);
             // 
             // btnCfg
             // 
@@ -119,7 +108,6 @@
             this.Controls.Add(this.txtMensaje);
             this.Controls.Add(this.chatContainer);
             this.Controls.Add(this.btnCfg);
-            this.Controls.Add(this.button1);
             this.Controls.Add(this.BtnEnviarArchivo);
             this.Controls.Add(this.btnEnviar);
             this.Name = "Form1";
@@ -134,7 +122,6 @@
         #endregion
         private System.Windows.Forms.Button btnEnviar;
         private System.Windows.Forms.Button BtnEnviarArchivo;
-        private System.Windows.Forms.Button button1;
         private System.Windows.Forms.Button btnCfg;
         private System.Windows.Forms.Panel chatContainer;
         private System.Windows.Forms.TextBox txtMensaje;

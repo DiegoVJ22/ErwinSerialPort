@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -15,8 +17,8 @@ namespace winproySerialPort
     {
         classTransRecep objTxRx;
         delegate void MostrarOtroProceso(string mensaje);
-        MostrarOtroProceso delegadoMostrar;
-        
+        MostrarOtroProceso delegadoMostrar, delegadoMostrarArchivo;
+        ArrayList rutasArchivos = new ArrayList();
         public Form1()
         {
             InitializeComponent();
@@ -65,13 +67,49 @@ namespace winproySerialPort
             objTxRx = new classTransRecep();
             objTxRx.Inicializa("COM2");
             objTxRx.LlegoMensaje += new classTransRecep.HandlerTxRx(objTxRx_LlegoMensaje);
+            objTxRx.LlegoArchivo += new classTransRecep.HandlerTxRxArchivo(objTxRx_LlegoArchivo);
             delegadoMostrar = new MostrarOtroProceso(MostrandoMensaje); 
+            delegadoMostrarArchivo = new MostrarOtroProceso(MostrandoArchivo);
         }
 
 
         private void objTxRx_LlegoMensaje(object o, string mm)
         {
             Invoke(delegadoMostrar , mm);
+        }
+
+        private void objTxRx_LlegoArchivo(object o, string ruta)
+        {
+            Invoke(delegadoMostrarArchivo, ruta);
+        }
+
+        private void MostrandoArchivo(string rutaArchivo)
+        {
+            // Crear un PictureBox para mostrar la imagen
+            PictureBox pictureBox = new PictureBox
+            {
+                Image = Image.FromFile(rutaArchivo),
+                Size = new Size(170, 170), // Redimensionar a 170x170
+                SizeMode = PictureBoxSizeMode.Zoom, // Ajustar la imagen al tamaño manteniendo la relación de aspecto
+                BackColor = Color.Transparent,
+                BorderStyle = BorderStyle.FixedSingle, // Borde sencillo
+            };
+
+            // Configurar el margen para el borde verde
+            pictureBox.Padding = new Padding(2);
+            pictureBox.BackColor = Color.LightGray; // Borde gris claro
+
+            int yOffset = chatContainer.Controls.Count > 0
+                ? chatContainer.Controls[chatContainer.Controls.Count - 1].Bottom + 5
+                : 10;
+
+            pictureBox.Location = new Point(10, yOffset);
+            pictureBox.Click += (s, args) => Process.Start(new ProcessStartInfo(rutaArchivo) { UseShellExecute = true });
+            // Agregar el PictureBox al contenedor
+            chatContainer.Controls.Add(pictureBox);
+            chatContainer.ScrollControlIntoView(pictureBox);
+
+
         }
 
         private void MostrandoMensaje(string mensajeRecibido)
@@ -106,24 +144,57 @@ namespace winproySerialPort
             {
                 // Obtener la ruta del archivo seleccionado
                 string rutaArchivo = openFileDialog.FileName;
-
+                rutasArchivos.Add(rutaArchivo);
                 objTxRx.IniciaEnvioArchivo(rutaArchivo);
 
+                // Crear un PictureBox para mostrar la imagen
+                PictureBox pictureBox = new PictureBox
+                {
+                    Image = Image.FromFile(rutaArchivo),
+                    Size = new Size(170, 170), // Redimensionar a 170x170
+                    SizeMode = PictureBoxSizeMode.Zoom, // Ajustar la imagen al tamaño manteniendo la relación de aspecto
+                    BackColor = Color.Transparent,
+                    BorderStyle = BorderStyle.FixedSingle, // Borde sencillo
+                };
+
+                // Configurar el margen para el borde verde
+                pictureBox.Padding = new Padding(2);
+                pictureBox.BackColor = Color.LightGreen; // Borde verde
+
+                // Calcular la posición del PictureBox en el contenedor
+                int yOffset = chatContainer.Controls.Count > 0
+                    ? chatContainer.Controls[chatContainer.Controls.Count - 1].Bottom + 5
+                    : 10;
+
+                int xOffset = chatContainer.DisplayRectangle.Width - pictureBox.Width - 20;
+
+                pictureBox.Location = new Point(xOffset, yOffset);
+                pictureBox.Click += (s, args) => Process.Start(new ProcessStartInfo(rutaArchivo) { UseShellExecute = true });
+                // Agregar el PictureBox al contenedor
+                chatContainer.Controls.Add(pictureBox);
+                chatContainer.ScrollControlIntoView(pictureBox);
                 //MessageBox.Show("Archivo seleccionado: " + rutaArchivo + "\nTamaño:" + bytesArchivo);
             }
         }
 
         //Métodos de prueba
 
-        private void button1_Click(object sender, EventArgs e)
-        {
-            MessageBox.Show(objTxRx.getRutaDescarga());
-        }
-
         private void button2_Click(object sender, EventArgs e)
         {
-            string nuevaRuta = "nuevo";
-            objTxRx.modificarRutaDescarga(nuevaRuta);
+            // Crear un FolderBrowserDialog para seleccionar la carpeta
+            using (FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog())
+            {
+                folderBrowserDialog.Description = "Selecciona la carpeta donde deseas guardar los archivos";
+                folderBrowserDialog.ShowNewFolderButton = true; // Permitir crear nuevas carpetas
+
+                // Mostrar el diálogo y verificar si el usuario seleccionó una carpeta
+                if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
+                {
+                    // Guardar la ruta seleccionada en la variable rutaDescarga
+                    string rutaDescarga = folderBrowserDialog.SelectedPath;
+                    objTxRx.modificarRutaDescarga(rutaDescarga);
+                }
+            }
         }
 
         private void txtMensaje_TextChanged(object sender, EventArgs e)
