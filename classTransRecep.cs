@@ -1,65 +1,64 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.IO.Ports;
 using System.IO;
-using System.Windows.Forms;
 using System.Threading;
+using System.Windows.Forms;
+using System.Text;
 
 namespace winproySerialPort
 {
+    // 1) Definimos 2 delegados:
+    //    - Uno para mensajes de texto
+    //    - Otro para avisar que llegó un archivo (metadatos)
+    public delegate void HandlerTxRx(object sender, string mensRec);
+    public delegate void HandlerTxRxArchivo(object sender, string nombreArchivo, long tamañoArchivo);
+
     class classTransRecep
     {
-        // Delegado y evento para recibir mensajes de texto
-        public delegate void HandlerTxRx(object oo, string mensRec);
+        // 2) Definimos los eventos que el Form suscribirá
         public event HandlerTxRx LlegoMensaje;
+        public event HandlerTxRxArchivo LlegoArchivo;
 
-        // Objetos para envío y recepción de archivos
+        // Modelo para archivos en envío/recepción
         private ClassArchivoEnviando arhivoEnviar;
+        private ClassArchivoEnviando arhivoRecibir;
+
+        // Streams para envío
         private FileStream FlujoArchivoEnviar;
         private BinaryReader LeyendoArchivo;
 
-        private ClassArchivoEnviando arhivoRecibir;
+        // Streams para recepción
         private FileStream FlujoArchivoRecibir;
         private BinaryWriter EscribiendoArchivo;
 
         // Hilos
-        Thread procesoEnvio;          // Para enviar texto
-        Thread procesoVerificaSalida; // Verificación del buffer (si se desea conservar)
-        Thread procesoRecibirMensaje; // Para procesar mensaje recibido
-        Thread procesoEnvioArchivo;   // Para enviar archivos
-        Thread procesoConstruyeArchivo; // Aún no utilizado, pero se deja por si se requiere
+        Thread procesoEnvio;
+        Thread procesoEnvioArchivo;
+        Thread procesoVerificaSalida;
+        Thread procesoRecibirMensaje;
 
         // Puerto serie
         private SerialPort puerto;
 
-        // Buffers de texto
+        // Buffers y estados
         private string mensajeEnviar;
         private string mensRecibido;
+        private bool BufferSalidaVacio;
 
-        // Ruta de descarga para archivos
+        private byte[] TramaEnvio;
+        private byte[] TramCabaceraEnvio;
+        private byte[] tramaRelleno;
+        private byte[] TramaRecibida;
+
+        // Ruta por defecto donde guardar archivos
         private string rutaDescarga = "E:\\PRUEBA\\1\\";
 
-        // Control de estado de buffer de salida (si deseas mantenerlo, puedes)
-        private Boolean BufferSalidaVacio;
-
-        // Arreglos de bytes para envío/recepción
-        byte[] TramaEnvio;
-        byte[] TramCabaceraEnvio;
-        byte[] tramaRelleno;
-        byte[] TramaRecibida;
-
-        // ----------------------------------------------------------------------------
-        // Objeto lock para sincronizar escritura (podrías usar lock(puerto), pero es 
-        // más seguro usar un objeto privado).
-        // ----------------------------------------------------------------------------
+        // lock para escritura concurrente (si decides usarlo)
         private object lockEscritura = new object();
 
-        // ----------------------------------------------------------------------------
+        // --------------------------------------------------------------------
         // Constructor
-        // ----------------------------------------------------------------------------
+        // --------------------------------------------------------------------
         public classTransRecep()
         {
             TramaEnvio = new byte[1024];
@@ -67,16 +66,19 @@ namespace winproySerialPort
             tramaRelleno = new byte[1024];
             TramaRecibida = new byte[1024];
 
-            // Relleno con '@'
-            for (int i = 0; i <= 1023; i++)
+            // Rellenamos el buffer de relleno con '@'
+            for (int i = 0; i < 1024; i++)
             {
                 tramaRelleno[i] = 64; // caracter ASCII '@'
             }
+
+            arhivoEnviar = new ClassArchivoEnviando();
+            arhivoRecibir = new ClassArchivoEnviando();
         }
 
-        // ----------------------------------------------------------------------------
-        // Get/Set de la ruta de descarga
-        // ----------------------------------------------------------------------------
+        // --------------------------------------------------------------------
+        // Getters/Setters para rutaDescarga
+        // --------------------------------------------------------------------
         public string getRutaDescarga()
         {
             return rutaDescarga;
@@ -87,81 +89,81 @@ namespace winproySerialPort
             rutaDescarga = nuevaRuta;
         }
 
-        // ----------------------------------------------------------------------------
-        // Inicializa el puerto serie
-        // ----------------------------------------------------------------------------
+        // --------------------------------------------------------------------
+        // Inicialización del puerto serie
+        // --------------------------------------------------------------------
         public void Inicializa(string NombrePuerto)
         {
             puerto = new SerialPort(NombrePuerto, 57600, Parity.Even, 8, StopBits.Two);
             puerto.ReceivedBytesThreshold = 1024;
-            puerto.DataReceived += new SerialDataReceivedEventHandler(puerto_DataReceived);
+            puerto.DataReceived += puerto_DataReceived;
             puerto.Open();
 
             BufferSalidaVacio = true;
 
-            // Lanzamos un hilo que verifique el estado del buffer de salida (opcional)
-            // Si no es tan necesario, puedes eliminarlo o darle un Sleep para no saturar CPU
+            // Hilo que verifica el buffer de salida (opcional)
             procesoVerificaSalida = new Thread(VerificandoSalida);
             procesoVerificaSalida.IsBackground = true;
             procesoVerificaSalida.Start();
 
-            // Inicializamos las estructuras para archivos
-            arhivoEnviar = new ClassArchivoEnviando();
-            arhivoRecibir = new ClassArchivoEnviando();
-
-            MessageBox.Show("Apertura del puerto " + puerto.PortName);
+            MessageBox.Show("Puerto abierto: " + puerto.PortName);
         }
 
-        // ----------------------------------------------------------------------------
-        // Evento DataReceived: se dispara cuando llegan 1024 bytes
-        // ----------------------------------------------------------------------------
-        private void puerto_DataReceived(object o, SerialDataReceivedEventArgs sd)
+        // --------------------------------------------------------------------
+        // Evento DataReceived: Se dispara cuando hay >= 1024 bytes disponibles
+        // --------------------------------------------------------------------
+        private void puerto_DataReceived(object sender, SerialDataReceivedEventArgs e)
         {
             if (puerto.BytesToRead >= 1024)
             {
+                // Leemos 1024 bytes en TramaRecibida
                 puerto.Read(TramaRecibida, 0, 1024);
 
+                // Primer byte indica la tarea (M, D, A, etc.)
                 string TAREA = Encoding.UTF8.GetString(TramaRecibida, 0, 1);
 
                 switch (TAREA)
                 {
                     case "M":
+                        // Mensaje de texto
                         procesoRecibirMensaje = new Thread(RecibiendoMensaje);
+                        procesoRecibirMensaje.IsBackground = true;
                         procesoRecibirMensaje.Start();
                         break;
 
                     case "D":
-                        string CabeceraRecibida = Encoding.UTF8.GetString(TramaRecibida, 1, 4);
-                        int LongitudMensajeRecibido = Convert.ToInt16(CabeceraRecibida);
-                        string metadatosRecibidos = Encoding.UTF8.GetString(TramaRecibida, 5, LongitudMensajeRecibido);
-                        InicioConstruirArchivo(metadatosRecibidos);
+                        // Metadatos de archivo
+                        // Inicia la construcción del archivo O
+                        // ... o disparamos un evento LlegoArchivo
+                        RecibirMetadatosArchivo();
                         break;
 
                     case "A":
+                        // Bloque de archivo
                         ConstruirArchivo();
                         break;
 
-                    case "I":
-                        // Caso "I" pendiente de implementar si se desea
-                        break;
-
                     default:
-                        MessageBox.Show("Trama no reconocida");
+                        // "I"? "trama no reconocida"? etc.
+                        // Dejar como sea conveniente
                         break;
                 }
             }
         }
 
-        // ----------------------------------------------------------------------------
-        // Procesar mensaje de texto recibido
-        // ----------------------------------------------------------------------------
+        // --------------------------------------------------------------------
+        // Procesar un mensaje de texto
+        // --------------------------------------------------------------------
         private void RecibiendoMensaje()
         {
+            // Cabecera = [1..4] -> longitud en decimal
             string CabRec = Encoding.UTF8.GetString(TramaRecibida, 1, 4);
             int LongMensRec = Convert.ToInt16(CabRec);
 
+            // Leemos el texto [5..(5+LongMensRec)]
             mensRecibido = Encoding.UTF8.GetString(TramaRecibida, 5, LongMensRec);
 
+            // Lanzamos el evento
             OnLlegoMensaje();
         }
 
@@ -171,46 +173,108 @@ namespace winproySerialPort
                 LlegoMensaje(this, mensRecibido);
         }
 
-        // ----------------------------------------------------------------------------
-        // Enviar un mensaje de texto
-        // ----------------------------------------------------------------------------
+        // --------------------------------------------------------------------
+        // Procesar metadatos de archivo ("D")
+        // Ej: "nombreArchivo-tamaño"
+        // --------------------------------------------------------------------
+        private void RecibirMetadatosArchivo()
+        {
+            // Leemos 4 bytes de longitud
+            string strLong = Encoding.UTF8.GetString(TramaRecibida, 1, 4);
+            int longDato = Convert.ToInt16(strLong);
+
+            // Leemos la parte real [5..5+longDato]
+            string metadatos = Encoding.UTF8.GetString(TramaRecibida, 5, longDato);
+
+            // metadatos -> "nombreArchivo-tamaño"
+            string[] partes = metadatos.Split('-');
+            string nombre = partes[0];
+            long tam = long.Parse(partes[1]);
+
+            // Disparamos el evento LlegoArchivo -> que el Form decida si hace un SaveFileDialog
+            OnLlegoArchivo(nombre, tam);
+        }
+
+        protected virtual void OnLlegoArchivo(string nombreArchivo, long tamaño)
+        {
+            if (LlegoArchivo != null)
+                LlegoArchivo(this, nombreArchivo, tamaño);
+        }
+
+        // --------------------------------------------------------------------
+        // Método para construir el archivo cuando llegan bloques "A"
+        // --------------------------------------------------------------------
+        private void ConstruirArchivo()
+        {
+            if (arhivoRecibir.Avance <= arhivoRecibir.Tamaño - 1019)
+            {
+                // Escribimos 1019 bytes
+                EscribiendoArchivo.Write(TramaRecibida, 5, 1019);
+                arhivoRecibir.Avance += 1019;
+            }
+            else
+            {
+                // Último bloque
+                int tamanito = (int)(arhivoRecibir.Tamaño - arhivoRecibir.Avance);
+                EscribiendoArchivo.Write(TramaRecibida, 5, tamanito);
+
+                // Cerramos
+                EscribiendoArchivo.Close();
+                FlujoArchivoRecibir.Close();
+
+                MessageBox.Show("Archivo recibido: " + arhivoRecibir.Nombre);
+            }
+        }
+
+        // --------------------------------------------------------------------
+        // El form (o quien sea) llamará a este cuando decida "crear" el archivo
+        // --------------------------------------------------------------------
+        public void InicioConstruirArchivo(string rutaDestino, string nombreArchivo, long tamArchivo)
+        {
+            FlujoArchivoRecibir = new FileStream(rutaDestino, FileMode.Create, FileAccess.Write);
+            EscribiendoArchivo = new BinaryWriter(FlujoArchivoRecibir);
+
+            arhivoRecibir.Nombre = nombreArchivo;
+            arhivoRecibir.Tamaño = tamArchivo;
+            arhivoRecibir.Avance = 0;
+        }
+
+        // --------------------------------------------------------------------
+        // Enviar un mensaje
+        // --------------------------------------------------------------------
         public void Enviar(string mensaje, string tipo = "M")
         {
             if (mensaje.Length > 1019)
             {
-                MessageBox.Show("El mensaje es demasiado largo. Máx permitido: 1019 caracteres.");
+                MessageBox.Show("Mensaje demasiado largo (máx 1019 caracteres)");
                 return;
             }
 
             mensajeEnviar = mensaje;
 
-            // Convertimos el mensaje a bytes
-            byte[] bytesMensaje = Encoding.UTF8.GetBytes(mensajeEnviar);
+            byte[] bMensaje = Encoding.UTF8.GetBytes(mensajeEnviar);
+            // Cabecera: (tipo) + (longitud de 4 dígitos)
+            string sCab = tipo + bMensaje.Length.ToString("D4");
+            TramCabaceraEnvio = Encoding.UTF8.GetBytes(sCab);
 
-            // Cabecera (tipo + longitud en 4 dígitos)
-            string longitudMensaje = tipo + bytesMensaje.Length.ToString("D4");
+            // Guardamos la parte real
+            TramaEnvio = bMensaje;
 
-            // Preparamos la trama
-            TramCabaceraEnvio = Encoding.UTF8.GetBytes(longitudMensaje);
-            TramaEnvio = bytesMensaje;
-
-            // Lanzamos un hilo para enviar el mensaje (hilo paralelo)
-            procesoEnvio = new Thread(Enviando);
+            // Lanzamos un hilo para enviar
+            procesoEnvio = new Thread(EnviandoMensaje);
             procesoEnvio.IsBackground = true;
             procesoEnvio.Start();
         }
 
-        // ----------------------------------------------------------------------------
-        // Hilo que escribe la trama de mensaje (con lock)
-        // ----------------------------------------------------------------------------
-        private void Enviando()
+        private void EnviandoMensaje()
         {
+            // lock(lockEscritura) si deseas sincronizar
             lock (lockEscritura)
             {
-                // Escribimos 5 bytes de cabecera
+                // Escribimos la cabecera (5 bytes)
                 puerto.Write(TramCabaceraEnvio, 0, 5);
 
-                // Escribimos el mensaje
+                // Escribimos el contenido
                 puerto.Write(TramaEnvio, 0, TramaEnvio.Length);
 
                 // Relleno
@@ -222,18 +286,99 @@ namespace winproySerialPort
             }
         }
 
-        // ----------------------------------------------------------------------------
-        // Método opcional para recibir texto (no muy usado en tu ejemplo)
-        // ----------------------------------------------------------------------------
-        public void Recibir()
+        // --------------------------------------------------------------------
+        // Inicia envío de archivo (envía metadatos "D" con "nombreArchivo-tamaño")
+        // --------------------------------------------------------------------
+        public void IniciaEnvioArchivo(string rutaArchivo)
         {
-            mensRecibido = puerto.ReadExisting();
-            MessageBox.Show(mensRecibido);
+            FlujoArchivoEnviar = new FileStream(rutaArchivo, FileMode.Open, FileAccess.Read);
+            LeyendoArchivo = new BinaryReader(FlujoArchivoEnviar);
+
+            arhivoEnviar.Ruta = rutaArchivo;
+            arhivoEnviar.Tamaño = FlujoArchivoEnviar.Length;
+            arhivoEnviar.Avance = 0;
+            arhivoEnviar.Num = 1;
+
+            // Obtenemos el nombre (para metadatos)
+            int idx = rutaArchivo.LastIndexOf('\\');
+            string nombreFile = rutaArchivo.Substring(idx + 1);
+            arhivoEnviar.Nombre = nombreFile;
+
+            // Preparamos "nombreArchivo-tamaño"
+            string metadatos = nombreFile + "-" + arhivoEnviar.Tamaño;
+
+            // Enviamos la trama de metadatos, tipo "D"
+            Enviar(metadatos, "D");
+
+            // Iniciamos hilo para mandar los bloques (tipo "A")
+            procesoEnvioArchivo = new Thread(EnviandoArchivo);
+            procesoEnvioArchivo.IsBackground = true;
+            procesoEnvioArchivo.Start();
         }
 
-        // ----------------------------------------------------------------------------
-        // Hilo que monitoriza el buffer de salida (opcional). Se sugiere un Thread.Sleep
-        // ----------------------------------------------------------------------------
+        // --------------------------------------------------------------------
+        // Envía los bloques "A" (1019 bytes cada uno, con relleno al final)
+        // --------------------------------------------------------------------
+        private void EnviandoArchivo()
+        {
+            // Cabecera: "A" + "1019" (por ejemplo) -> "A1019"
+            // o puedes usar "A" + la longitud real del trozo. Aquí usaremos 1019 
+            byte[] cab = Encoding.UTF8.GetBytes("A1019");
+
+            byte[] buffer = new byte[1019];
+            int leidos = 0;
+            long total = arhivoEnviar.Tamaño;
+
+            while (arhivoEnviar.Avance <= total - 1019)
+            {
+                // Leer 1019
+                leidos = LeyendoArchivo.Read(buffer, 0, 1019);
+                arhivoEnviar.Avance += leidos;
+
+                lock (lockEscritura)
+                {
+                    // Espera (opcional) si usas BufferSalidaVacio
+                    while (!BufferSalidaVacio) { /* busy wait? */ }
+
+                    puerto.Write(cab, 0, 5);
+                    puerto.Write(buffer, 0, leidos);
+                }
+            }
+
+            // Último bloque
+            int faltan = (int)(total - arhivoEnviar.Avance);
+            if (faltan > 0)
+            {
+                byte[] ultimo = new byte[faltan];
+                LeyendoArchivo.Read(ultimo, 0, faltan);
+                arhivoEnviar.Avance += faltan;
+
+                // Cabecera con la longitud real: p.ej. "A00XX"
+                string sLong = faltan.ToString("D4");
+                byte[] cabFinal = Encoding.UTF8.GetBytes("A" + sLong);
+
+                lock (lockEscritura)
+                {
+                    while (!BufferSalidaVacio) { /* busy wait? */ }
+
+                    puerto.Write(cabFinal, 0, 5);
+                    puerto.Write(ultimo, 0, faltan);
+
+                    // Relleno
+                    int rell = 1019 - faltan;
+                    if (rell > 0) puerto.Write(tramaRelleno, 0, rell);
+                }
+            }
+
+            LeyendoArchivo.Close();
+            FlujoArchivoEnviar.Close();
+
+            MessageBox.Show("Archivo enviado: " + arhivoEnviar.Nombre);
+        }
+
+        // --------------------------------------------------------------------
+        // Hilo de verificación del buffer de salida
+        // --------------------------------------------------------------------
         private void VerificandoSalida()
         {
             while (true)
@@ -243,150 +388,8 @@ namespace winproySerialPort
                 else
                     BufferSalidaVacio = true;
 
-                // Para no consumir CPU al 100%, dormimos un poco
+                // Para no saturar CPU
                 Thread.Sleep(10);
-            }
-        }
-
-        // ----------------------------------------------------------------------------
-        // Inicia el envío de un archivo
-        // ----------------------------------------------------------------------------
-        public void IniciaEnvioArchivo(string nombre)
-        {
-            // Abrimos el archivo
-            FlujoArchivoEnviar = new FileStream(nombre, FileMode.Open, FileAccess.Read);
-            LeyendoArchivo = new BinaryReader(FlujoArchivoEnviar);
-
-            arhivoEnviar.Nombre = nombre;
-            arhivoEnviar.Tamaño = FlujoArchivoEnviar.Length;
-            arhivoEnviar.Avance = 0;
-            arhivoEnviar.Num = 1;
-
-            int indiceUltimaBarra = nombre.LastIndexOf('\\');
-            string nombreArchivo = nombre.Substring(indiceUltimaBarra + 1);
-
-            // Metadatos: "nombreArchivo-tamaño"
-            string metadatos = nombreArchivo + "-" + FlujoArchivoEnviar.Length;
-
-            // Enviamos la trama "D" con metadatos (nombre y tamaño)
-            Enviar(metadatos, "D");
-
-            // Iniciamos el hilo para enviar el archivo en bloques
-            procesoEnvioArchivo = new Thread(EnviandoArchivo);
-            procesoEnvioArchivo.IsBackground = true;
-            procesoEnvioArchivo.Start();
-        }
-
-        // ----------------------------------------------------------------------------
-        // Hilo que envía el archivo en bloques de 1019 bytes
-        // ----------------------------------------------------------------------------
-        private void EnviandoArchivo()
-        {
-            byte[] TramaEnvioArchivo = new byte[1019];
-            byte[] TramCabaceraEnvioArchivo = new byte[5];
-
-            // Cabecera "AI" (Archivo Informacion) -> 1 byte para 'A', luego 4 bytes para la longitud
-            // Puedes sobrescribir el primer valor en cada bloque con la longitud real
-            // o usar "1019" fijo si siempre envías 1019 (menos el último).
-            // Aquí usaremos la longitud real en cada bloque.
-
-            // Enviamos en un bucle mientras queden >= 1019 bytes
-            while (arhivoEnviar.Avance <= arhivoEnviar.Tamaño - 1019)
-            {
-                LeyendoArchivo.Read(TramaEnvioArchivo, 0, 1019);
-                arhivoEnviar.Avance += 1019;
-
-                // Sin bloqueo de BufferSalidaVacio, simplemente lock para escritura
-                lock (lockEscritura)
-                {
-                    // La longitud en 4 dígitos es "1019"
-                    string sLong = "1019";
-                    // Tipo A -> primer byte
-                    TramCabaceraEnvioArchivo[0] = Encoding.UTF8.GetBytes("A")[0];
-                    // Copiamos la longitud "1019"
-                    byte[] bLong = Encoding.UTF8.GetBytes(sLong);
-                    Array.Copy(bLong, 0, TramCabaceraEnvioArchivo, 1, 4);
-
-                    // Escribimos la cabecera
-                    puerto.Write(TramCabaceraEnvioArchivo, 0, 5);
-
-                    // Escribimos los 1019 bytes de datos
-                    puerto.Write(TramaEnvioArchivo, 0, 1019);
-                }
-            }
-
-            // Ahora, el último bloque
-            int tamanito = (int)(arhivoEnviar.Tamaño - arhivoEnviar.Avance);
-            if (tamanito > 0)
-            {
-                byte[] ultimoBloque = new byte[tamanito];
-                LeyendoArchivo.Read(ultimoBloque, 0, tamanito);
-
-                arhivoEnviar.Avance += tamanito;
-
-                lock (lockEscritura)
-                {
-                    // Cabecera
-                    string sLong = tamanito.ToString("D4");
-                    TramCabaceraEnvioArchivo[0] = Encoding.UTF8.GetBytes("A")[0];
-                    byte[] bLong = Encoding.UTF8.GetBytes(sLong);
-                    Array.Copy(bLong, 0, TramCabaceraEnvioArchivo, 1, 4);
-
-                    puerto.Write(TramCabaceraEnvioArchivo, 0, 5);
-                    puerto.Write(ultimoBloque, 0, tamanito);
-
-                    // Relleno
-                    int resto = 1019 - tamanito;
-                    if (resto > 0)
-                    {
-                        puerto.Write(tramaRelleno, 0, resto);
-                    }
-                }
-            }
-
-            LeyendoArchivo.Close();
-            FlujoArchivoEnviar.Close();
-
-            // Mensaje de confirmación, si gustas
-            MessageBox.Show("Archivo enviado completamente: " + arhivoEnviar.Nombre);
-        }
-
-        // ----------------------------------------------------------------------------
-        // Preparar el archivo al recibir metadatos "D"
-        // ----------------------------------------------------------------------------
-        public void InicioConstruirArchivo(string metadatos)
-        {
-            string[] partes = metadatos.Split('-');
-            string nombre = partes[0];
-            string bytes = partes[1];
-
-            FlujoArchivoRecibir = new FileStream(rutaDescarga + nombre, FileMode.Create, FileAccess.Write);
-            EscribiendoArchivo = new BinaryWriter(FlujoArchivoRecibir);
-
-            arhivoRecibir.Nombre = nombre;
-            arhivoRecibir.Num = 1;
-            arhivoRecibir.Tamaño = long.Parse(bytes);
-            arhivoRecibir.Avance = 0;
-        }
-
-        // ----------------------------------------------------------------------------
-        // Construir el archivo en bloques "A"
-        // ----------------------------------------------------------------------------
-        private void ConstruirArchivo()
-        {
-            if (arhivoRecibir.Avance <= arhivoRecibir.Tamaño - 1019)
-            {
-                EscribiendoArchivo.Write(TramaRecibida, 5, 1019);
-                arhivoRecibir.Avance += 1019;
-            }
-            else
-            {
-                int tamanito = Convert.ToInt16(arhivoRecibir.Tamaño - arhivoRecibir.Avance);
-                EscribiendoArchivo.Write(TramaRecibida, 5, tamanito);
-                EscribiendoArchivo.Close();
-                FlujoArchivoRecibir.Close();
-
-                MessageBox.Show("Archivo recibido: " + arhivoRecibir.Nombre);
             }
         }
     }
